@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Study Planner</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+    <div class="container my-5">
+        <h1 class="mb-4 text-center">📘 Study Planner</h1>
+
+
+        <!-- Add Task Form -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Add New Study Plan</h5>
+                <form id="addTaskForm">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title</label>
+                        <input type="text" class="form-control" id="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="subject" class="form-label">Subject</label>
+                        <input type="text" class="form-control" id="subject" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="due_date" class="form-label">Due Date</label>
+                        <input type="date" class="form-control" id="due_date">
+                    </div>
+                    <div class="mb-3">
+                        <label for="due_time" class="form-label">Due Time</label>
+                        <input type="time" class="form-control" id="due_time">
+                    </div>
+                    <!-- Suggestion Button -->
+                    <div class="mb-3">
+                        <label for="attachment_url" class="form-label">Attachment URL (optional)</label>
+                        <input type="url" class="form-control" id="attachment_url"
+                            placeholder="https://drive.google.com/..." />
+                    </div>
+
+
+                    <button type="submit" class="btn btn-primary">Add Task</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Study Plan Table -->
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="mb-3">
+                        <span id="progressBadge" class="badge bg-info fs-6">📊 0% Completed</span>
+                        <div id="progressQuote" class="text-muted mt-1"></div>
+                    </div>
+
+                </div>
+                <h5 class="card-title">Your Study Plans</h5>
+                <!-- 🔍 Search Bar: place this above the task table -->
+                <div class="input-group mb-3">
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search by title or subject…">
+                    <button class="btn btn-outline-secondary" onclick="runSearch()">🔍 Search</button>
+                    <button class="btn btn-outline-secondary" onclick="fetchTasks()">⟲ Reset</button>
+                </div>
+                <button class="btn btn-outline-danger mb-3 me-2" onclick="purgeAllTasks()">
+                    🧨 Delete All Tasks
+                </button>
+
+                <table class="table table-bordered table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th><input type="checkbox" onclick="toggleAll(this)"></th>
+                            <th>ID</th>
+                            <th>Title</th>
+                            <th>Subject</th>
+                            <th>Due Date</th>
+                            <th>Due Time</th>
+                            <th>Status</th>
+                            <th>Attachment</th>
+                            <th>Actions</th>
+
+                        </tr>
+                    </thead>
+                    <tbody id="taskTable">
+                        <!-- Tasks will be added here by JS -->
+                    </tbody>
+                </table>
+                <button class="btn btn-outline-secondary mb-3 me-2" onclick="showGroupBySubject()">
+                    📚 Group by Subject
+                </button>
+
+                <a href="/tasks/export/csv" class="btn btn-outline-primary mb-3" download>
+                    📥 Export All Tasks to CSV
+                </a>
+                <button class="btn btn-outline-danger mb-3" onclick="deleteCompletedTasks()">
+                    🧹 Delete All Completed Tasks
+                </button>
+                <button class="btn btn-outline-info mb-3 me-2" onclick="showUpcomingTasks()">
+                    📅 Show Upcoming Tasks
+                </button>
+
+                <button class="btn btn-outline-primary mb-3 me-2" onclick="showCompletedToday()">
+                    ✅ Show Tasks Completed Today
+                </button>
+
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center">
+            <button class="btn btn-outline-success mb-3" onclick="showSuggestions()">💡 Suggest Study
+                Slots</button>
+
+            <!-- Display Area -->
+            <ul id="suggestionsList" class="list-group mb-4"></ul>
+        </div>
+
+    </div>
+
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- JavaScript -->
+    <script>
+        async function fetchTasks() {
+            const res = await fetch('/tasks');
+            const tasks = await res.json();
+            tasks.sort((a, b) => {
+                if (a.pinned === b.pinned) {
+                    return (`${a.due_date} ${a.due_time}`) > (`${b.due_date} ${b.due_time}`) ? 1 : -1;
+                }
+                return a.pinned ? -1 : 1;   // pinned first
+            });
+            const table = document.getElementById('taskTable');
+            table.innerHTML = '';
+            tasks.forEach(task => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+    <td><input type="checkbox" class="task-checkbox" value="${task.id}"></td>
+    <td>${task.id}</td>
+    <td>${task.title}</td>
+    <td>${task.subject}</td>
+    <td>${task.due_date || 'N/A'}</td>
+    <td>${task.due_time || 'N/A'}</td>
+    <td>
+      <span class="badge ${task.is_completed ? 'bg-success' : 'bg-warning text-dark'}">
+        ${task.is_completed ? 'Completed' : 'Pending'}
+      </span>
+    </td>
+    <td>${task.attachment_url || '—'}</td>
+
+    <td>
+        <button class="btn btn-sm btn-warning me-2" onclick="togglePin(${task.id})">
+      ${task.pinned ? '📌 Unpin' : '📌 Pin'}
+    </button>
+        <button class="btn btn-sm btn-primary me-2" onclick="updateTask(${task.id})">✏️ Update</button>
+      <button class="btn btn-sm btn-success me-2" onclick="markDone(${task.id})">✅ Done</button>
+      <button class="btn btn-sm btn-danger me-2" onclick="deleteTask(${task.id})">🗑️ Delete</button>
+
+     
+    </td>
+  `;
+                table.appendChild(row);
+            });
+            updateProgressBadge(tasks);
+
+        }
+
+        document.getElementById('addTaskForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const title = document.getElementById('title').value;
+            const subject = document.getElementById('subject').value;
+            const due_date = document.getElementById('due_date').value;
+            const due_time = document.getElementById('due_time').value;
+            const attachmentUrl = document.getElementById('attachment_url').value.trim();
+
+            await fetch('/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title,
+                    subject,
+                    due_date,
+                    due_time,
+                    attachment_url: attachmentUrl
+                })
+            });
+
+            this.reset();
+            fetchTasks();
+        });
+        async function purgeAllTasks() {
+            if (!confirm("⚠️ Are you sure you want to delete ALL tasks? This action cannot be undone.")) {
+                return;
+            }
+
+            await fetch('/tasks/purge', {
+                method: 'DELETE'
+            });
+
+            fetchTasks();  // Refresh the table
+        }
+
+        async function showUpcomingTasks() {
+            const res = await fetch('/tasks/upcoming');
+            const upcomingTasks = await res.json();
+
+            const table = document.getElementById('taskTable');
+            table.innerHTML = '';
+            upcomingTasks.forEach(task => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+      <td><input type="checkbox" class="task-checkbox" value="${task.id}"></td>
+      <td>${task.id}</td>
+      <td>${task.title}</td>
+      <td>${task.subject}</td>
+      <td>${task.due_date}</td>
+      <td>${task.due_time}</td>
+      <td>
+        <span class="badge ${task.is_completed ? 'bg-success' : 'bg-warning text-dark'}">
+          ${task.is_completed ? 'Completed' : 'Pending'}
+        </span>
+      </td>
+      <td>${task.attachment_url || '—'}</td>
+      <td>
+        <button class="btn btn-sm btn-primary me-2" onclick="updateTask(${task.id})">✏️ Update</button>
+        <button class="btn btn-sm btn-success me-2" onclick="markDone(${task.id})">✅ Done</button>
+        <button class="btn btn-sm btn-danger me-2" onclick="deleteTask(${task.id})">🗑️ Delete</button>
+        <a href="/tasks/${task.id}/calendar" class="btn btn-sm btn-secondary" download>📅 Calendar</a>
+      </td>
+    `;
+                table.appendChild(row);
+            });
+
+            updateProgressBadge(upcomingTasks);
+        }
+
+        async function runSearch() {
+            const q = document.getElementById('searchInput').value.trim();
+            if (!q) return;
+
+            const res = await fetch(`/tasks/search?q=${encodeURIComponent(q)}`);
+            const tasks = await res.json();
+
+            // render search results
+            const table = document.getElementById('taskTable');
+            table.innerHTML = '';
+            tasks.forEach(task => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+      <td><input type="checkbox" class="task-checkbox" value="${task.id}"></td>
+      <td>${task.id}</td>
+      <td>${task.title}</td>
+      <td>${task.subject}</td>
+      <td>${task.due_date}</td>
+      <td>${task.due_time}</td>
+      <td>
+        <span class="badge ${task.is_completed ? 'bg-success' : 'bg-warning text-dark'}">
+          ${task.is_completed ? 'Completed' : 'Pending'}
+        </span>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-warning me-2" onclick="togglePin(${task.id})">${task.pinned ? '📌 Unpin' : '📌 Pin'}</button>
+        <button class="btn btn-sm btn-success me-2" onclick="markDone(${task.id})">✅ Done</button>
+        <button class="btn btn-sm btn-danger me-2" onclick="deleteTask(${task.id})">🗑️ Delete</button>
+
+        <a href="/tasks/${task.id}/calendar" class="btn btn-sm btn-secondary" download>📅 Add to Calendar</a>
+      </td>
+      
+
+    `;
+                table.appendChild(row);
+            });
+
+            updateProgressBadge(tasks);
+        }
+        async function showGroupBySubject() {
+            const res = await fetch('/tasks/group_by_subject');
+            const groups = await res.json();           // {"Math":[...], "Physics":[...], ...}
+
+            const table = document.getElementById('taskTable');
+            table.innerHTML = '';
+
+            // Keep a flat array for the progress badge
+            let flatTasks = [];
+
+            // Sort subjects alphabetically for nice order
+            Object.keys(groups).sort().forEach(subject => {
+                // --- Header row for the subject --------------------
+                const hdr = document.createElement('tr');
+                hdr.innerHTML = `<td colspan="9" class="table-primary fw-bold">${subject}</td>`;
+                table.appendChild(hdr);
+
+                // --- Task rows for this subject --------------------
+                groups[subject].forEach(task => {
+                    flatTasks.push(task);   // collect for badge %
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+        <td><input type="checkbox" class="task-checkbox" value="${task.id}"></td>
+        <td>${task.id}</td>
+        <td>${task.title}</td>
+        <td>${task.subject}</td>
+        <td>${task.due_date}</td>
+        <td>${task.due_time}</td>
+        <td>
+          <span class="badge ${task.is_completed ? 'bg-success' : 'bg-warning text-dark'}">
+            ${task.is_completed ? 'Completed' : 'Pending'}
+          </span>
+        </td>
+        <td>${task.attachment_url || '—'}</td>
+        <td>
+          <button class="btn btn-sm btn-primary me-2" onclick="updateTask(${task.id})">✏️ Update</button>
+          <button class="btn btn-sm btn-success me-2" onclick="markDone(${task.id})">✅ Done</button>
+          <button class="btn btn-sm btn-danger me-2" onclick="deleteTask(${task.id})">🗑️ Delete</button>
+
+          <a href="/tasks/${task.id}/calendar" class="btn btn-sm btn-secondary" download>📅 Calendar</a>
+        </td>
+      `;
+                    table.appendChild(row);
+                });
+            });
+
+            updateProgressBadge(flatTasks);
+        }
+
+        async function markDone(id) {
+            await fetch(`/tasks/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_completed: true })
+            });
+            fetchTasks();
+        }
+        function updateProgressBadge(tasks) {
+            const done = tasks.filter(t => t.is_completed).length;
+            const total = tasks.length;
+            const percent = total ? Math.floor((done / total) * 100) : 0;
+
+            document.getElementById("progressBadge").innerText = `📊 ${percent}% Completed`;
+
+            // Motivational message
+            let message = "";
+            if (percent === 0) {
+                message = "🌱 Just getting started!";
+            } else if (percent < 50) {
+                message = "🚀 Off to a great start!";
+            } else if (percent < 80) {
+                message = "💪 Halfway there — keep going!";
+            } else if (percent < 100) {
+                message = "🔥 Almost done — finish strong!";
+            } else {
+                message = "🏆 All tasks complete — awesome work!";
+            }
+
+            document.getElementById("progressQuote").innerText = message;
+        }
+
+        async function togglePin(id) {
+            await fetch(`/tasks/${id}/pin`, { method: 'PATCH' });
+            fetchTasks();          // refresh table
+        }
+        async function showSuggestions() {
+            const res = await fetch('/tasks/suggest');
+            const suggestions = await res.json();
+
+            const list = document.getElementById('suggestionsList');
+            list.innerHTML = '';
+
+            suggestions.forEach(slot => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.innerHTML = `📘 <b>${slot.date}</b> at <b>${slot.time}</b> → ${slot.suggested_slot}`;
+                list.appendChild(li);
+            });
+        }
+        async function updateTask(id) {
+            // Fetch the current task so we can show default values
+            const res = await fetch(`/tasks/${id}`);
+            if (!res.ok) {
+                alert("Task not found");
+                return;
+            }
+            const task = await res.json();
+
+            // Simple inline prompts – feel free to replace with a Bootstrap modal later
+            const title = prompt("Update Title:", task.title);
+            if (title === null) return;   // user cancelled
+            const subject = prompt("Update Subject:", task.subject);
+            if (subject === null) return;
+            const dueDate = prompt("Update Due Date (YYYY-MM-DD):", task.due_date);
+            if (dueDate === null) return;
+            const dueTime = prompt("Update Due Time (HH:MM):", task.due_time);
+            if (dueTime === null) return;
+            const attachmentUrl = prompt("Attachment URL (optional):", task.attachment_url || "");
+            // Send PUT request
+            await fetch(`/tasks/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: title,
+                    subject: subject,
+                    due_date: dueDate,
+                    due_time: dueTime
+                })
+            });
+
+            fetchTasks();  // refresh table after update
+        }
+
+        async function deleteCompletedTasks() {
+            const confirmed = confirm("Are you sure you want to delete all completed tasks?");
+            if (!confirmed) return;
+
+            const res = await fetch('/tasks/delete_completed', {
+                method: 'DELETE'
+            });
+
+            const result = await res.json();
+            alert(result.message + ` (${result.deleted} deleted)`);
+
+            fetchTasks();  // refresh the table
+        }
+
+        async function showCompletedToday() {
+            const res = await fetch('/tasks/completed-today');
+            const tasksToday = await res.json();
+
+            // Re‑use your existing table rendering
+            const table = document.getElementById('taskTable');
+            table.innerHTML = '';
+            tasksToday.forEach(task => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+      <td><input type="checkbox" class="task-checkbox" value="${task.id}"></td>
+      <td>${task.id}</td>
+      <td>${task.title}</td>
+      <td>${task.subject}</td>
+      <td>${task.due_date}</td>
+      <td>${task.due_time}</td>
+      <td>
+        <span class="badge bg-success">Completed</span>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-warning me-2" onclick="togglePin(${task.id})">${task.pinned ? '📌 Unpin' : '📌 Pin'}</button>
+        <button class="btn btn-sm btn-danger me-2" onclick="deleteTask(${task.id})">🗑️ Delete</button>
+
+      </td>
+    `;
+                table.appendChild(row);
+            });
+
+            updateProgressBadge(tasksToday);  // keep badge accurate to the filtered list
+        }
+
+        async function deleteTask(id) {
+            if (!confirm("Delete this task permanently?")) return;
+
+            // 🔽 NEW route that matches your Flask DELETE endpoint
+            const res = await fetch(`/delete/${id}`, {
+                method: 'DELETE'
+            });
+
+            const result = await res.json();
+            alert(result.message || result.error);
+            fetchTasks();                // Refresh table afterwards
+        }
+
+
+        fetchTasks();
+    </script>
+
+</body>
+
+</html>
